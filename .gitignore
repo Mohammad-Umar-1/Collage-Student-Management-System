@@ -1,0 +1,17 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+
+# SQLite database
+*.db
+*.iml
+# IntelliJ / PyCharm
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
