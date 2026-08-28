@@ -1,27 +1,28 @@
-from tkinter import ttk
+# PyQt5 global stylesheet (QSS) replacing ttk.Style theme
+APP_STYLESHEET = """
+QWidget {
+    font-family: 'Segoe UI';
+    font-size: 11pt;
+}
+QPushButton {
+    padding: 8px;
+    font-size: 11pt;
+}
+QTableWidget {
+    font-size: 10pt;
+    gridline-color: #e5e7eb;
+}
+QHeaderView::section {
+    font-weight: bold;
+    font-size: 11pt;
+    padding: 6px;
+}
+QTableWidget::item {
+    padding: 4px;
+}
+"""
 
-def apply_style(root):
-    style = ttk.Style(root)
-    style.theme_use("clam")
 
-    style.configure(
-        "TButton",
-        font=("Segoe UI", 11),
-        padding=8
-    )
-
-    style.configure(
-        "Treeview",
-        font=("Segoe UI", 10),
-        rowheight=28
-    )
-
-    style.configure(
-        "Treeview.Heading",
-        font=("Segoe UI", 11, "bold")
-    )
-
-    style.configure(
-        "TLabel",
-        font=("Segoe UI", 11)
-    )
+def apply_style(app):
+    # app = QApplication instance
+    app.setStyleSheet(APP_STYLESHEET)

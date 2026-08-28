@@ -1,20 +1,20 @@
-from tkinter import Tk
+import sys
+from PyQt5.QtWidgets import QApplication
 from db import init_db
-from ui_login import start_login
+from ui_style import apply_style
+from ui_login import LoginWindow
 
 
 def main():
-    # Create main Tk root
-    root = Tk()
+    app = QApplication(sys.argv)
+    apply_style(app)
 
-    # Initialize database (tables + default admin)
-    init_db()
+    init_db()  # tables + default admin
 
-    # Start login UI
-    start_login(root)
+    login_win = LoginWindow()
+    login_win.show()
 
-    # Start Tkinter event loop
-    root.mainloop()
+    sys.exit(app.exec_())
 
 
 if __name__ == "__main__":

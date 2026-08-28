@@ -1,6 +1,9 @@
-from tkinter import *
-from tkinter import ttk, messagebox
-from ui_scroll import ScrollablePage
+from PyQt5.QtWidgets import (
+    QWidget, QLabel, QLineEdit, QPushButton, QComboBox, QVBoxLayout,
+    QHBoxLayout, QFormLayout, QFrame, QTableWidget, QTableWidgetItem,
+    QMessageBox, QScrollArea, QHeaderView
+)
+from PyQt5.QtCore import Qt
 from marks import (
     get_students_by_year,
     get_marks_for_student,
@@ -8,246 +11,235 @@ from marks import (
     delete_mark
 )
 
+SEM_MAP = {1: [1, 2], 2: [3, 4], 3: [5, 6], 4: [7, 8]}
 
-def open_marks_ui(role):
-    win = Toplevel()
-    win.title("Marks Management")
-    win.state("zoomed")
 
-    # ================= SCROLLABLE PAGE =================
-    page = ScrollablePage(win)
-    page.pack(fill=BOTH, expand=True)
+class MarksWindow(QWidget):
+    def __init__(self, role):
+        super().__init__()
+        self.role = role
+        self.selected_adm = None
+        self.setWindowTitle("Marks Management")
+        self.showMaximized()
 
-    # ================= HEADER =================
-    Label(
-        page.content,
-        text="Marks Management",
-        font=("Segoe UI", 22, "bold"),
-        fg="#111827",
-        bg="#f4f6f8"
-    ).pack(pady=20)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
 
-    body = Frame(page.content, bg="#f4f6f8")
-    body.pack(fill=BOTH, expand=True, padx=30)
+        page = QWidget()
+        scroll.setWidget(page)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(30, 20, 30, 20)
 
-    # ================= LEFT PANEL =================
-    left = Frame(body, bg="#f3f4f6", padx=20, pady=20, relief=RIDGE, bd=1)
-    left.pack(side=LEFT, fill=Y)
+        header = QLabel("Marks Management")
+        header.setStyleSheet("font-size: 22pt; font-weight: bold;")
+        header.setAlignment(Qt.AlignCenter)
+        layout.addWidget(header)
 
-    Label(left, text="Academic Filters",
-          font=("Segoe UI", 15, "bold"),
-          bg="#f3f4f6").pack(pady=10)
+        body = QHBoxLayout()
+        layout.addLayout(body)
 
-    Label(left, text="Year", bg="#f3f4f6").pack(anchor="w")
-    year_cb = ttk.Combobox(left, values=[1, 2, 3, 4], state="readonly", width=18)
-    year_cb.pack(pady=5)
+        # ================= LEFT PANEL =================
+        left = QFrame()
+        left.setStyleSheet("background-color: #f3f4f6; border: 1px solid #d1d5db;")
+        left.setFixedWidth(300)
+        left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(20, 20, 20, 20)
 
-    Label(left, text="Semester", bg="#f3f4f6").pack(anchor="w")
-    sem_cb = ttk.Combobox(left, state="readonly", width=18)
-    sem_cb.pack(pady=5)
+        left_layout.addWidget(self._section_title("Academic Filters"))
 
-    Label(left, text="Subject", bg="#f3f4f6").pack(anchor="w")
-    subject_cb = ttk.Combobox(
-        left,
-        values=[f"Subject {i}" for i in range(1, 6)],
-        state="readonly",
-        width=18
-    )
-    subject_cb.pack(pady=5)
+        left_layout.addWidget(QLabel("Year"))
+        self.year_cb = QComboBox()
+        self.year_cb.addItems(["", "1", "2", "3", "4"])
+        self.year_cb.currentTextChanged.connect(self.update_semesters)
+        left_layout.addWidget(self.year_cb)
 
-    ttk.Separator(left).pack(fill=X, pady=15)
+        left_layout.addWidget(QLabel("Semester"))
+        self.sem_cb = QComboBox()
+        self.sem_cb.currentTextChanged.connect(self.load_students)
+        left_layout.addWidget(self.sem_cb)
 
-    Label(left, text="Students",
-          font=("Segoe UI", 14, "bold"),
-          bg="#f3f4f6").pack(pady=10)
+        left_layout.addWidget(QLabel("Subject"))
+        self.subject_cb = QComboBox()
+        self.subject_cb.addItems([f"Subject {i}" for i in range(1, 6)])
+        left_layout.addWidget(self.subject_cb)
 
-    student_table = ttk.Treeview(
-        left,
-        columns=("adm", "name"),
-        show="headings",
-        height=15
-    )
-    student_table.heading("adm", text="Admission No")
-    student_table.heading("name", text="Name")
-    student_table.pack()
+        left_layout.addWidget(self._section_title("Students"))
 
-    # ================= RIGHT PANEL =================
-    right = Frame(body, bg="#f4f6f8", padx=30)
-    right.pack(side=LEFT, fill=BOTH, expand=True)
+        self.student_table = QTableWidget(0, 2)
+        self.student_table.setHorizontalHeaderLabels(["Admission No", "Name"])
+        self.student_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.student_table.itemSelectionChanged.connect(self.select_student)
+        left_layout.addWidget(self.student_table)
 
-    info = StringVar()
-    Label(right, textvariable=info,
-          font=("Segoe UI", 13),
-          bg="#f4f6f8").pack(pady=5)
+        body.addWidget(left)
 
-    semester_percent = StringVar(value="Semester Percentage: --")
+        # ================= RIGHT PANEL =================
+        right = QVBoxLayout()
+        body.addLayout(right, stretch=1)
 
-    Label(
-        right,
-        textvariable=semester_percent,
-        font=("Segoe UI", 16, "bold"),
-        fg="#2563eb",
-        bg="#f4f6f8"
-    ).pack(pady=10)
+        self.info_label = QLabel("")
+        self.info_label.setStyleSheet("font-size: 13pt;")
+        self.info_label.setAlignment(Qt.AlignCenter)
+        right.addWidget(self.info_label)
 
-    # ================= FORM =================
-    form = Frame(right, bg="white", padx=25, pady=25, relief=RIDGE, bd=1)
-    form.pack(pady=20)
+        self.percent_label = QLabel("Semester Percentage: --")
+        self.percent_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #2563eb;")
+        self.percent_label.setAlignment(Qt.AlignCenter)
+        right.addWidget(self.percent_label)
 
-    Label(form, text="Unit 1 ( /50 )", bg="white").grid(row=0, column=0, pady=6)
-    Label(form, text="Unit 2 ( /50 )", bg="white").grid(row=1, column=0, pady=6)
-    Label(form, text="Final ( /100 )", bg="white").grid(row=2, column=0, pady=6)
+        # ---- FORM ----
+        form_frame = QFrame()
+        form_frame.setStyleSheet("background-color: white; border: 1px solid #d1d5db;")
+        form_layout = QFormLayout(form_frame)
+        form_layout.setContentsMargins(25, 25, 25, 25)
 
-    u1 = Entry(form, width=12)
-    u2 = Entry(form, width=12)
-    final = Entry(form, width=12)
+        self.u1 = QLineEdit()
+        self.u2 = QLineEdit()
+        self.final = QLineEdit()
+        form_layout.addRow("Unit 1 ( /50 )", self.u1)
+        form_layout.addRow("Unit 2 ( /50 )", self.u2)
+        form_layout.addRow("Final ( /100 )", self.final)
+        right.addWidget(form_frame, alignment=Qt.AlignHCenter)
 
-    u1.grid(row=0, column=1, padx=10)
-    u2.grid(row=1, column=1, padx=10)
-    final.grid(row=2, column=1, padx=10)
+        # ---- BUTTONS ----
+        save_btn = QPushButton("Save / Update")
+        save_btn.setStyleSheet("background-color: #2563eb; color: white; font-weight: bold;")
+        save_btn.clicked.connect(self.save_marks)
+        right.addWidget(save_btn, alignment=Qt.AlignHCenter)
 
-    # ================= BUTTONS =================
-    Button(
-        right, text="Save / Update",
-        bg="#2563eb", fg="white",
-        font=("Segoe UI", 11, "bold"),
-        width=18, relief=FLAT,
-        command=lambda: save_marks()
-    ).pack(pady=5)
+        del_btn = QPushButton("Delete Marks")
+        del_btn.setStyleSheet("background-color: #dc2626; color: white; font-weight: bold;")
+        del_btn.clicked.connect(self.delete_marks)
+        right.addWidget(del_btn, alignment=Qt.AlignHCenter)
 
-    Button(
-        right, text="Delete Marks",
-        bg="#dc2626", fg="white",
-        font=("Segoe UI", 11, "bold"),
-        width=18, relief=FLAT,
-        command=lambda: delete_marks()
-    ).pack(pady=5)
+        right.addWidget(self._section_title("Saved Marks"))
 
-    ttk.Separator(right).pack(fill=X, pady=20)
+        marks_card = QFrame()
+        marks_card.setStyleSheet("background-color: white; border: 1px solid #d1d5db;")
+        marks_card_layout = QVBoxLayout(marks_card)
 
-    # ================= SAVED MARKS TABLE =================
-    Label(right, text="Saved Marks",
-          font=("Segoe UI", 15, "bold"),
-          bg="#f4f6f8").pack(pady=10)
+        self.marks_table = QTableWidget(0, 4)
+        self.marks_table.setHorizontalHeaderLabels(["SUBJECT", "U1", "U2", "FINAL"])
+        self.marks_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.marks_table.itemSelectionChanged.connect(self.select_mark)
+        marks_card_layout.addWidget(self.marks_table)
 
-    marks_card = Frame(right, bg="white", padx=15, pady=15, relief=RIDGE, bd=1)
-    marks_card.pack(fill=X)
+        right.addWidget(marks_card)
 
-    marks_table = ttk.Treeview(
-        marks_card,
-        columns=("subject", "u1", "u2", "final"),
-        show="headings",
-        height=8
-    )
+    def _section_title(self, text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        lbl.setAlignment(Qt.AlignCenter)
+        return lbl
 
-    for c in ("subject", "u1", "u2", "final"):
-        marks_table.heading(c, text=c.upper())
-        marks_table.column(c, anchor="center", width=140)
-
-    marks_table.pack(fill=X)
-
-    # ================= STATE =================
-    selected = {"adm": None}
-
-    # ================= HELPERS =================
-    def valid(val, maxv):
+    # ---------- HELPERS ----------
+    def valid(self, val, maxv):
         try:
             v = float(val)
             if 0 <= v <= maxv:
                 return round(v, 2)
-        except:
+        except (TypeError, ValueError):
             pass
         return None
 
-    def subject_percent(a, b, c):
+    def subject_percent(self, a, b, c):
         return ((a + b + c) / 200) * 100
 
-    # ================= LOGIC =================
-    def update_semesters(event):
-        sem_cb["values"] = {
-            1: [1, 2],
-            2: [3, 4],
-            3: [5, 6],
-            4: [7, 8]
-        }[int(year_cb.get())]
+    # ---------- LOGIC ----------
+    def update_semesters(self, year_text):
+        self.sem_cb.blockSignals(True)
+        self.sem_cb.clear()
+        if year_text:
+            self.sem_cb.addItems([str(s) for s in SEM_MAP[int(year_text)]])
+        self.sem_cb.blockSignals(False)
 
-    def load_students():
-        student_table.delete(*student_table.get_children())
-        for adm, name in get_students_by_year(int(year_cb.get())):
-            student_table.insert("", END, values=(adm, name))
+    def load_students(self, sem_text=None):
+        self.student_table.setRowCount(0)
+        if not self.year_cb.currentText():
+            return
+        for adm, name in get_students_by_year(int(self.year_cb.currentText())):
+            r = self.student_table.rowCount()
+            self.student_table.insertRow(r)
+            self.student_table.setItem(r, 0, QTableWidgetItem(str(adm)))
+            self.student_table.setItem(r, 1, QTableWidgetItem(str(name)))
 
-    def load_saved_marks(adm):
-        marks_table.delete(*marks_table.get_children())
-        rows = get_marks_for_student(adm, int(sem_cb.get()))
+    def load_saved_marks(self, adm):
+        self.marks_table.setRowCount(0)
+        if not self.sem_cb.currentText():
+            return
+        rows = get_marks_for_student(adm, int(self.sem_cb.currentText()))
 
         for s, a, b, c in rows:
-            marks_table.insert("", END, values=(s, a, b, c))
+            r = self.marks_table.rowCount()
+            self.marks_table.insertRow(r)
+            for col, val in enumerate((s, a, b, c)):
+                self.marks_table.setItem(r, col, QTableWidgetItem(str(val)))
 
         if len(rows) == 5:
-            total = sum(subject_percent(a, b, c) for _, a, b, c in rows)
-            semester_percent.set(f"Semester Percentage: {round(total / 5, 2)}%")
+            total = sum(self.subject_percent(a, b, c) for _, a, b, c in rows)
+            self.percent_label.setText(f"Semester Percentage: {round(total / 5, 2)}%")
         else:
-            semester_percent.set("Semester Percentage: -- (Add all 5 subjects)")
+            self.percent_label.setText("Semester Percentage: -- (Add all 5 subjects)")
 
-    def select_student(event):
-        sel = student_table.focus()
-        if not sel:
+    def select_student(self):
+        row = self.student_table.currentRow()
+        if row < 0:
             return
-        adm, name = student_table.item(sel)["values"]
-        selected["adm"] = adm
-        info.set(f"{name}  |  Admission No: {adm}")
-        load_saved_marks(adm)
+        adm = self.student_table.item(row, 0).text()
+        name = self.student_table.item(row, 1).text()
+        self.selected_adm = adm
+        self.info_label.setText(f"{name}  |  Admission No: {adm}")
+        self.load_saved_marks(adm)
 
-    def select_mark(event):
-        sel = marks_table.focus()
-        if not sel:
+    def select_mark(self):
+        row = self.marks_table.currentRow()
+        if row < 0:
             return
-        s, a, b, c = marks_table.item(sel)["values"]
-        subject_cb.set(s)
-        u1.delete(0, END)
-        u2.delete(0, END)
-        final.delete(0, END)
-        u1.insert(0, a)
-        u2.insert(0, b)
-        final.insert(0, c)
+        s = self.marks_table.item(row, 0).text()
+        a = self.marks_table.item(row, 1).text()
+        b = self.marks_table.item(row, 2).text()
+        c = self.marks_table.item(row, 3).text()
+        idx = self.subject_cb.findText(s)
+        if idx >= 0:
+            self.subject_cb.setCurrentIndex(idx)
+        self.u1.setText(a)
+        self.u2.setText(b)
+        self.final.setText(c)
 
-    def save_marks():
-        if not selected["adm"]:
-            messagebox.showerror("Error", "Select a student")
+    def save_marks(self):
+        if not self.selected_adm:
+            QMessageBox.critical(self, "Error", "Select a student")
             return
 
-        a = valid(u1.get(), 50)
-        b = valid(u2.get(), 50)
-        c = valid(final.get(), 100)
+        a = self.valid(self.u1.text(), 50)
+        b = self.valid(self.u2.text(), 50)
+        c = self.valid(self.final.text(), 100)
 
         if None in (a, b, c):
-            messagebox.showerror(
-                "Invalid Marks",
-                "Unit 1 & 2: 0–50\nFinal: 0–100\nUp to 2 decimals"
+            QMessageBox.critical(
+                self, "Invalid Marks",
+                "Unit 1 & 2: 0-50\nFinal: 0-100\nUp to 2 decimals"
             )
             return
 
         save_mark(
-            selected["adm"],
-            subject_cb.get(),
-            int(sem_cb.get()),
+            self.selected_adm,
+            self.subject_cb.currentText(),
+            int(self.sem_cb.currentText()),
             a, b, c
         )
 
-        load_saved_marks(selected["adm"])
+        self.load_saved_marks(self.selected_adm)
 
-    def delete_marks():
-        if not selected["adm"]:
+    def delete_marks(self):
+        if not self.selected_adm:
             return
         delete_mark(
-            selected["adm"],
-            subject_cb.get(),
-            int(sem_cb.get())
+            self.selected_adm,
+            self.subject_cb.currentText(),
+            int(self.sem_cb.currentText())
         )
-        load_saved_marks(selected["adm"])
-
-    # ================= EVENTS =================
-    year_cb.bind("<<ComboboxSelected>>", update_semesters)
-    sem_cb.bind("<<ComboboxSelected>>", lambda e: load_students())
-    student_table.bind("<<TreeviewSelect>>", select_student)
-    marks_table.bind("<<TreeviewSelect>>", select_mark)
+        self.load_saved_marks(self.selected_adm)

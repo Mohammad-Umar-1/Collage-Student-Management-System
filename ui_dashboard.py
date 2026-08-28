@@ -1,11 +1,9 @@
-from tkinter import *
-from tkinter import messagebox
-from ui_student import open_student_ui
-from ui_marks import open_marks_ui
-from ui_admin_users import open_user_management
-from ui_login import show_login_again
+from PyQt5.QtWidgets import (
+    QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
+    QFrame, QMessageBox
+)
+from PyQt5.QtCore import Qt
 
-# ================= THEME =================
 BG_APP = "#f4f6f8"
 BG_SIDEBAR = "#111827"
 BG_SIDEBAR_BTN = "#1f2937"
@@ -13,110 +11,119 @@ BG_SIDEBAR_BTN_HOVER = "#374151"
 ACCENT = "#2563eb"
 
 
-def open_dashboard(parent, role):
-    dashboard = Toplevel(parent)
-    dashboard.title("College Management System")
-    dashboard.state("zoomed")
-    dashboard.configure(bg=BG_APP)
+class DashboardWindow(QWidget):
+    def __init__(self, role, login_window):
+        super().__init__()
+        self.role = role
+        self.login_window = login_window
+        self.child_windows = []  # keep refs to opened sub-windows
 
-    # ================= SIDEBAR =================
-    sidebar = Frame(dashboard, bg=BG_SIDEBAR, width=260)
-    sidebar.pack(side=LEFT, fill=Y)
-    sidebar.pack_propagate(False)
+        self.setWindowTitle("College Management System")
+        self.showMaximized()
+        self.setStyleSheet(f"background-color: {BG_APP};")
 
-    # ---- LOGO / TITLE ----
-    Label(
-        sidebar,
-        text="COLLEGE CMS",
-        fg="white",
-        bg=BG_SIDEBAR,
-        font=("Segoe UI", 20, "bold")
-    ).pack(pady=(30, 5))
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-    Label(
-        sidebar,
-        text=f"Logged in as: {role.capitalize()}",
-        fg="#9ca3af",
-        bg=BG_SIDEBAR,
-        font=("Segoe UI", 10)
-    ).pack(pady=(0, 30))
+        # ================= SIDEBAR =================
+        sidebar = QFrame()
+        sidebar.setFixedWidth(260)
+        sidebar.setStyleSheet(f"background-color: {BG_SIDEBAR};")
+        side_layout = QVBoxLayout(sidebar)
+        side_layout.setContentsMargins(15, 30, 15, 20)
 
-    # ---- NAV BUTTON FACTORY ----
-    def nav_button(text, command):
-        btn = Button(
-            sidebar,
-            text=text,
-            bg=BG_SIDEBAR_BTN,
-            fg="white",
-            font=("Segoe UI", 11),
-            relief=FLAT,
-            height=2,
-            anchor="w",
-            padx=20,
-            command=command
+        logo = QLabel("COLLEGE CMS")
+        logo.setStyleSheet("color: white; font-size: 20pt; font-weight: bold;")
+        logo.setAlignment(Qt.AlignCenter)
+        side_layout.addWidget(logo)
+
+        user_label = QLabel(f"Logged in as: {role.capitalize()}")
+        user_label.setStyleSheet("color: #9ca3af; font-size: 10pt;")
+        user_label.setAlignment(Qt.AlignCenter)
+        side_layout.addWidget(user_label)
+        side_layout.addSpacing(20)
+
+        if role == "admin":
+            side_layout.addWidget(self._nav_button("Students", self.open_students))
+            side_layout.addWidget(self._nav_button("Teachers / Users", self.open_user_management))
+
+        side_layout.addWidget(self._nav_button("Marks", self.open_marks))
+
+        side_layout.addStretch()
+
+        logout_btn = QPushButton("Logout")
+        logout_btn.setStyleSheet(
+            "background-color: #dc2626; color: white; font-weight: bold; padding: 10px;"
         )
-        btn.pack(fill=X, padx=15, pady=6)
+        logout_btn.clicked.connect(self.logout)
+        side_layout.addWidget(logout_btn)
 
-        btn.bind("<Enter>", lambda e: btn.config(bg=BG_SIDEBAR_BTN_HOVER))
-        btn.bind("<Leave>", lambda e: btn.config(bg=BG_SIDEBAR_BTN))
+        root.addWidget(sidebar)
+
+        # ================= MAIN CONTENT =================
+        content = QFrame()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(50, 40, 50, 40)
+        content_layout.setAlignment(Qt.AlignTop)
+
+        welcome_card = QFrame()
+        welcome_card.setStyleSheet("background-color: white; border: 1px solid #d1d5db;")
+        wc_layout = QVBoxLayout(welcome_card)
+        wc_layout.setContentsMargins(40, 30, 40, 30)
+
+        welcome_title = QLabel(f"Welcome, {role.capitalize()}")
+        welcome_title.setStyleSheet("font-size: 26pt; font-weight: bold; color: #111827;")
+        wc_layout.addWidget(welcome_title)
+
+        welcome_sub = QLabel("Use the menu on the left to manage students, users, and marks.")
+        welcome_sub.setStyleSheet("font-size: 12pt; color: #6b7280;")
+        wc_layout.addWidget(welcome_sub)
+
+        content_layout.addWidget(welcome_card, alignment=Qt.AlignLeft)
+        root.addWidget(content, stretch=1)
+
+    def _nav_button(self, text, handler):
+        btn = QPushButton(text)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BG_SIDEBAR_BTN};
+                color: white;
+                text-align: left;
+                padding: 12px 20px;
+                font-size: 11pt;
+                border: none;
+            }}
+            QPushButton:hover {{
+                background-color: {BG_SIDEBAR_BTN_HOVER};
+            }}
+        """)
+        btn.clicked.connect(handler)
         return btn
 
-    # ---- ADMIN OPTIONS ----
-    if role == "admin":
-        nav_button("Students", lambda: open_student_ui(role))
-        nav_button("Teachers / Users", open_user_management)
+    def open_students(self):
+        from ui_student import StudentWindow
+        w = StudentWindow(self.role)
+        w.show()
+        self.child_windows.append(w)
 
-    # ---- COMMON OPTIONS ----
-    nav_button("Marks", lambda: open_marks_ui(role))
+    def open_marks(self):
+        from ui_marks import MarksWindow
+        w = MarksWindow(self.role)
+        w.show()
+        self.child_windows.append(w)
 
-    # ---- SPACER ----
-    Frame(sidebar, bg=BG_SIDEBAR).pack(expand=True, fill=BOTH)
+    def open_user_management(self):
+        from ui_admin_users import UserManagementWindow
+        w = UserManagementWindow()
+        w.show()
+        self.child_windows.append(w)
 
-    # ---- LOGOUT (CORRECT WAY) ----
-    def logout():
-        if messagebox.askyesno("Logout", "Do you want to logout?"):
-            dashboard.destroy()       # close dashboard only
-            show_login_again(parent) # show login again
-
-    Button(
-        sidebar,
-        text="Logout",
-        bg="#dc2626",
-        fg="white",
-        font=("Segoe UI", 11, "bold"),
-        relief=FLAT,
-        height=2,
-        command=logout
-    ).pack(fill=X, padx=20, pady=20)
-
-    # ================= MAIN CONTENT =================
-    content = Frame(dashboard, bg=BG_APP, padx=50, pady=40)
-    content.pack(fill=BOTH, expand=True)
-
-    # ---- WELCOME CARD ----
-    welcome_card = Frame(
-        content,
-        bg="white",
-        padx=40,
-        pady=30,
-        relief=RIDGE,
-        bd=1
-    )
-    welcome_card.pack(anchor="nw", pady=20)
-
-    Label(
-        welcome_card,
-        text=f"Welcome, {role.capitalize()} 👋",
-        font=("Segoe UI", 26, "bold"),
-        fg="#111827",
-        bg="white"
-    ).pack(anchor="w")
-
-    Label(
-        welcome_card,
-        text="Use the menu on the left to manage students, users, and marks.",
-        font=("Segoe UI", 12),
-        fg="#6b7280",
-        bg="white"
-    ).pack(anchor="w", pady=(10, 0))
-
+    def logout(self):
+        reply = QMessageBox.question(
+            self, "Logout", "Do you want to logout?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.close()
+            self.login_window.show_login_again()

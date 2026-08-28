@@ -1,214 +1,181 @@
-from tkinter import *
-from tkinter import ttk, messagebox
+from PyQt5.QtWidgets import (
+    QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout,
+    QFrame, QTableWidget, QTableWidgetItem, QMessageBox, QScrollArea,
+    QHeaderView
+)
+from PyQt5.QtCore import Qt
 from db import get_connection
 from auth import create_user
 
 
-def open_user_management():
-    win = Toplevel()
-    win.title("Teacher Account Management")
-    win.state("zoomed")
-    win.configure(bg="#f4f6f8")
+class UserManagementWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.selected_id = None
+        self.setWindowTitle("Teacher Account Management")
+        self.showMaximized()
+        self.setStyleSheet("background-color: #f4f6f8;")
 
-    # ================= SCROLLABLE CONTAINER =================
-    canvas = Canvas(win, bg="#f4f6f8", highlightthickness=0)
-    scrollbar = ttk.Scrollbar(win, orient=VERTICAL, command=canvas.yview)
-    canvas.configure(yscrollcommand=scrollbar.set)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
 
-    scrollbar.pack(side=RIGHT, fill=Y)
-    canvas.pack(side=LEFT, fill=BOTH, expand=True)
+        page = QWidget()
+        scroll.setWidget(page)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(60, 20, 60, 20)
 
-    content = Frame(canvas, bg="#f4f6f8")
-    canvas.create_window((0, 0), window=content, anchor="nw")
+        header = QLabel("Teacher Account Management")
+        header.setStyleSheet("font-size: 22pt; font-weight: bold; color: #111827;")
+        header.setAlignment(Qt.AlignCenter)
+        layout.addWidget(header)
 
-    def on_configure(event):
-        canvas.configure(scrollregion=canvas.bbox("all"))
+        sub = QLabel("Create, update, and remove teacher login access")
+        sub.setStyleSheet("font-size: 11pt; color: #6b7280;")
+        sub.setAlignment(Qt.AlignCenter)
+        layout.addWidget(sub)
 
-    content.bind("<Configure>", on_configure)
+        container = QHBoxLayout()
+        layout.addLayout(container)
 
-    def on_mousewheel(event):
-        canvas.yview_scroll(-1 * int(event.delta / 120), "units")
+        # ================= LEFT CARD =================
+        left = QFrame()
+        left.setStyleSheet("background-color: white; border: 1px solid #d1d5db;")
+        left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(30, 30, 30, 30)
 
-    canvas.bind_all("<MouseWheel>", on_mousewheel)
+        left_title = QLabel("Create / Update Teacher")
+        left_title.setStyleSheet("font-size: 16pt; font-weight: bold;")
+        left_layout.addWidget(left_title)
 
-    # ================= HEADER =================
-    Label(
-        content,
-        text="Teacher Account Management",
-        font=("Segoe UI", 22, "bold"),
-        bg="#f4f6f8",
-        fg="#111827"
-    ).pack(pady=(20, 5))
+        left_layout.addWidget(QLabel("Username"))
+        self.username = QLineEdit()
+        left_layout.addWidget(self.username)
 
-    Label(
-        content,
-        text="Create, update, and remove teacher login access",
-        font=("Segoe UI", 11),
-        bg="#f4f6f8",
-        fg="#6b7280"
-    ).pack(pady=(0, 25))
+        left_layout.addWidget(QLabel("Password"))
+        self.password = QLineEdit()
+        self.password.setEchoMode(QLineEdit.Password)
+        left_layout.addWidget(self.password)
 
-    # ================= MAIN CONTAINER =================
-    container = Frame(content, bg="#f4f6f8")
-    container.pack(fill=BOTH, expand=True, padx=60)
+        create_btn = QPushButton("Create Teacher")
+        create_btn.setStyleSheet("background-color: #16a34a; color: white; font-weight: bold;")
+        create_btn.clicked.connect(self.create_teacher)
+        left_layout.addWidget(create_btn)
 
-    # =================================================
-    # LEFT CARD — CREATE / UPDATE
-    # =================================================
-    left = Frame(container, bg="white", padx=30, pady=30, relief=RIDGE, bd=1)
-    left.pack(side=LEFT, fill=Y, padx=(0, 30))
+        update_btn = QPushButton("Update Password")
+        update_btn.setStyleSheet("background-color: #2563eb; color: white; font-weight: bold;")
+        update_btn.clicked.connect(self.update_teacher)
+        left_layout.addWidget(update_btn)
 
-    Label(
-        left,
-        text="Create / Update Teacher",
-        font=("Segoe UI", 16, "bold"),
-        bg="white"
-    ).pack(pady=(0, 20))
+        left_layout.addStretch()
+        container.addWidget(left)
 
-    Label(left, text="Username", bg="white").pack(anchor="w")
-    username = Entry(left, width=28)
-    username.pack(pady=5)
+        # ================= RIGHT CARD =================
+        right = QFrame()
+        right.setStyleSheet("background-color: white; border: 1px solid #d1d5db;")
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(30, 30, 30, 30)
 
-    Label(left, text="Password", bg="white").pack(anchor="w")
-    password = Entry(left, width=28, show="*")
-    password.pack(pady=5)
+        right_title = QLabel("Existing Teachers")
+        right_title.setStyleSheet("font-size: 16pt; font-weight: bold;")
+        right_layout.addWidget(right_title)
 
-    selected_id = {"id": None}
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["ID", "USERNAME"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.itemSelectionChanged.connect(self.on_select)
+        right_layout.addWidget(self.table)
 
-    def clear_form():
-        username.delete(0, END)
-        password.delete(0, END)
-        selected_id["id"] = None
+        delete_btn = QPushButton("Delete Selected Teacher")
+        delete_btn.setStyleSheet("background-color: #dc2626; color: white; font-weight: bold;")
+        delete_btn.clicked.connect(self.delete_teacher)
+        right_layout.addWidget(delete_btn)
 
-    def create_teacher():
-        if not username.get() or not password.get():
-            messagebox.showerror("Error", "All fields required")
+        container.addWidget(right, stretch=1)
+
+        self.load_teachers()
+
+    def clear_form(self):
+        self.username.clear()
+        self.password.clear()
+        self.selected_id = None
+
+    def create_teacher(self):
+        if not self.username.text() or not self.password.text():
+            QMessageBox.critical(self, "Error", "All fields required")
             return
 
-        if create_user(username.get(), password.get(), "teacher"):
-            messagebox.showinfo("Success", "Teacher created")
-            clear_form()
-            load_teachers()
+        if create_user(self.username.text(), self.password.text(), "teacher"):
+            QMessageBox.information(self, "Success", "Teacher created")
+            self.clear_form()
+            self.load_teachers()
         else:
-            messagebox.showerror("Error", "Username already exists")
+            QMessageBox.critical(self, "Error", "Username already exists")
 
-    def update_teacher():
-        if not selected_id["id"]:
-            messagebox.showerror("Error", "Select a teacher to update")
+    def update_teacher(self):
+        if not self.selected_id:
+            QMessageBox.critical(self, "Error", "Select a teacher to update")
             return
 
-        if not password.get():
-            messagebox.showerror("Error", "Enter new password")
+        if not self.password.text():
+            QMessageBox.critical(self, "Error", "Enter new password")
             return
 
         con = get_connection()
         cur = con.cursor()
         cur.execute(
             "UPDATE users SET password=? WHERE id=?",
-            (password.get(), selected_id["id"])
+            (self.password.text(), self.selected_id)
         )
         con.commit()
         con.close()
 
-        messagebox.showinfo("Updated", "Password updated")
-        clear_form()
-        load_teachers()
+        QMessageBox.information(self, "Updated", "Password updated")
+        self.clear_form()
+        self.load_teachers()
 
-    Button(
-        left,
-        text="Create Teacher",
-        bg="#16a34a",
-        fg="white",
-        font=("Segoe UI", 11, "bold"),
-        width=20,
-        relief=FLAT,
-        command=create_teacher
-    ).pack(pady=(15, 5))
-
-    Button(
-        left,
-        text="Update Password",
-        bg="#2563eb",
-        fg="white",
-        font=("Segoe UI", 11, "bold"),
-        width=20,
-        relief=FLAT,
-        command=update_teacher
-    ).pack(pady=5)
-
-    # =================================================
-    # RIGHT CARD — TEACHER LIST
-    # =================================================
-    right = Frame(container, bg="white", padx=30, pady=30, relief=RIDGE, bd=1)
-    right.pack(side=LEFT, fill=BOTH, expand=True)
-
-    Label(
-        right,
-        text="Existing Teachers",
-        font=("Segoe UI", 16, "bold"),
-        bg="white"
-    ).pack(pady=(0, 15))
-
-    table = ttk.Treeview(
-        right,
-        columns=("id", "username"),
-        show="headings",
-        height=15
-    )
-    table.heading("id", text="ID")
-    table.heading("username", text="USERNAME")
-    table.column("id", width=80, anchor="center")
-    table.column("username", width=250, anchor="center")
-    table.pack(fill=BOTH, expand=True)
-
-    def load_teachers():
-        table.delete(*table.get_children())
+    def load_teachers(self):
+        self.table.setRowCount(0)
         con = get_connection()
         cur = con.cursor()
         cur.execute("SELECT id, username FROM users WHERE role='teacher'")
         for row in cur.fetchall():
-            table.insert("", END, values=row)
+            r = self.table.rowCount()
+            self.table.insertRow(r)
+            for c, val in enumerate(row):
+                self.table.setItem(r, c, QTableWidgetItem(str(val)))
         con.close()
 
-    def on_select(event):
-        sel = table.focus()
-        if not sel:
+    def on_select(self):
+        row = self.table.currentRow()
+        if row < 0:
             return
-        uid, uname = table.item(sel)["values"]
-        selected_id["id"] = uid
-        username.delete(0, END)
-        username.insert(0, uname)
-        password.delete(0, END)
+        uid = self.table.item(row, 0).text()
+        uname = self.table.item(row, 1).text()
+        self.selected_id = uid
+        self.username.setText(uname)
+        self.password.clear()
 
-    def delete_teacher():
-        if not selected_id["id"]:
-            messagebox.showerror("Error", "Select a teacher to delete")
+    def delete_teacher(self):
+        if not self.selected_id:
+            QMessageBox.critical(self, "Error", "Select a teacher to delete")
             return
 
-        if not messagebox.askyesno("Confirm", "Delete this teacher account?"):
+        reply = QMessageBox.question(
+            self, "Confirm", "Delete this teacher account?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
             return
 
         con = get_connection()
         cur = con.cursor()
-        cur.execute("DELETE FROM users WHERE id=?", (selected_id["id"],))
+        cur.execute("DELETE FROM users WHERE id=?", (self.selected_id,))
         con.commit()
         con.close()
 
-        messagebox.showinfo("Deleted", "Teacher deleted")
-        clear_form()
-        load_teachers()
-
-    table.bind("<<TreeviewSelect>>", on_select)
-
-    Button(
-        right,
-        text="Delete Selected Teacher",
-        bg="#dc2626",
-        fg="white",
-        font=("Segoe UI", 11, "bold"),
-        width=25,
-        relief=FLAT,
-        command=delete_teacher
-    ).pack(pady=15)
-
-    load_teachers()
+        QMessageBox.information(self, "Deleted", "Teacher deleted")
+        self.clear_form()
+        self.load_teachers()

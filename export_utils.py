@@ -1,5 +1,5 @@
 import pandas as pd
-from tkinter import filedialog
+from PyQt5.QtWidgets import QFileDialog
 from db import get_connection
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -44,24 +44,18 @@ def get_students_with_marks(year):
 
 # ================= EXPORT HELPERS =================
 
-def export_excel(df, default_name):
-    path = filedialog.asksaveasfilename(
-        title="Save Excel File",
-        defaultextension=".xlsx",
-        initialfile=default_name,
-        filetypes=[("Excel Files", "*.xlsx")]
+def export_excel(df, default_name, parent=None):
+    path, _ = QFileDialog.getSaveFileName(
+        parent, "Save Excel File", default_name + ".xlsx", "Excel Files (*.xlsx)"
     )
     if not path:
         return
     df.to_excel(path, index=False)
 
 
-def export_pdf(df, default_name, title):
-    path = filedialog.asksaveasfilename(
-        title="Save PDF File",
-        defaultextension=".pdf",
-        initialfile=default_name,
-        filetypes=[("PDF Files", "*.pdf")]
+def export_pdf(df, default_name, title, parent=None):
+    path, _ = QFileDialog.getSaveFileName(
+        parent, "Save PDF File", default_name + ".pdf", "PDF Files (*.pdf)"
     )
     if not path:
         return

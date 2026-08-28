@@ -1,7 +1,10 @@
-from tkinter import *
-from tkinter import ttk, messagebox
+from PyQt5.QtWidgets import (
+    QWidget, QLabel, QLineEdit, QPushButton, QComboBox, QVBoxLayout,
+    QHBoxLayout, QFormLayout, QFrame, QTableWidget, QTableWidgetItem,
+    QMessageBox, QScrollArea, QHeaderView
+)
+from PyQt5.QtCore import Qt
 from student import add_student, update_student, delete_student, get_all_students
-from ui_scroll import ScrollablePage
 from export_utils import (
     get_students_year,
     get_students_with_marks,
@@ -9,186 +12,216 @@ from export_utils import (
     export_pdf
 )
 
+FIELDS = ["Admission No", "Name", "Gender", "Year", "Section", "Phone", "Email", "Address"]
 
-def open_student_ui(role):
-    win = Toplevel()
-    win.title("Student Management")
-    win.state("zoomed")
 
-    page = ScrollablePage(win)
-    page.pack(fill=BOTH, expand=True)
+class StudentWindow(QWidget):
+    def __init__(self, role):
+        super().__init__()
+        self.role = role
+        self.setWindowTitle("Student Management")
+        self.showMaximized()
 
-    # ================= HEADER =================
-    Label(
-        page.content,
-        text="Student Management",
-        font=("Segoe UI", 22, "bold"),
-        bg="#f4f6f8"
-    ).pack(pady=20)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
 
-    # ================= FORM =================
-    form = Frame(page.content, bg="white", padx=30, pady=30, relief=RIDGE, bd=1)
-    form.pack(fill=X, padx=60)
+        page = QWidget()
+        scroll.setWidget(page)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(60, 20, 60, 20)
 
-    fields = [
-        "Admission No", "Name", "Gender", "Year",
-        "Section", "Phone", "Email", "Address"
-    ]
-    entries = {}
+        # ================= HEADER =================
+        header = QLabel("Student Management")
+        header.setStyleSheet("font-size: 22pt; font-weight: bold;")
+        header.setAlignment(Qt.AlignCenter)
+        layout.addWidget(header)
 
-    for i, f in enumerate(fields):
-        Label(form, text=f, bg="white").grid(row=i, column=0, sticky="w", pady=6)
+        # ================= FORM =================
+        form_frame = QFrame()
+        form_frame.setStyleSheet("background-color: white; border: 1px solid #d1d5db;")
+        form_layout = QFormLayout(form_frame)
+        form_layout.setContentsMargins(30, 30, 30, 30)
 
-        if f == "Gender":
-            e = ttk.Combobox(form, values=["Male", "Female"], state="readonly")
-        elif f == "Year":
-            e = ttk.Combobox(form, values=[1, 2, 3, 4], state="readonly")
-        else:
-            e = Entry(form)
+        self.entries = {}
+        for f in FIELDS:
+            if f == "Gender":
+                w = QComboBox()
+                w.addItems(["Male", "Female"])
+            elif f == "Year":
+                w = QComboBox()
+                w.addItems(["1", "2", "3", "4"])
+            else:
+                w = QLineEdit()
+            form_layout.addRow(f, w)
+            self.entries[f] = w
 
-        e.grid(row=i, column=1, padx=10, pady=6)
-        entries[f] = e
+        layout.addWidget(form_frame)
 
-    # ================= BUTTONS =================
-    btns = Frame(page.content, bg="#f4f6f8")
-    btns.pack(pady=15)
+        # ================= BUTTONS =================
+        btns = QHBoxLayout()
+        add_btn = QPushButton("Add")
+        add_btn.setStyleSheet("background-color: #16a34a; color: white;")
+        add_btn.clicked.connect(self.save)
 
-    def save():
-        add_student(
-            entries["Admission No"].get(),
-            entries["Name"].get(),
-            entries["Gender"].get(),
-            int(entries["Year"].get()),
-            entries["Section"].get(),
-            entries["Phone"].get(),
-            entries["Email"].get(),
-            entries["Address"].get()
+        upd_btn = QPushButton("Update")
+        upd_btn.setStyleSheet("background-color: #2563eb; color: white;")
+        upd_btn.clicked.connect(self.update)
+
+        del_btn = QPushButton("Delete")
+        del_btn.setStyleSheet("background-color: #dc2626; color: white;")
+        del_btn.clicked.connect(self.delete)
+
+        btns.addStretch()
+        btns.addWidget(add_btn)
+        btns.addWidget(upd_btn)
+        btns.addWidget(del_btn)
+        btns.addStretch()
+        layout.addLayout(btns)
+
+        # ================= EXPORT =================
+        export_frame = QFrame()
+        export_frame.setStyleSheet("background-color: white; border: 1px solid #d1d5db;")
+        export_layout = QVBoxLayout(export_frame)
+        export_layout.setContentsMargins(20, 20, 20, 20)
+
+        export_layout.addWidget(QLabel("<b>Export (Year-wise)</b>"))
+
+        export_row = QHBoxLayout()
+        self.year_cb = QComboBox()
+        self.year_cb.addItems(["", "1", "2", "3", "4"])
+        export_row.addWidget(self.year_cb)
+
+        for text, handler in [
+            ("Students → Excel", self.export_students_excel),
+            ("Students → PDF", self.export_students_pdf),
+            ("Marks → Excel", self.export_marks_excel),
+            ("Marks → PDF", self.export_marks_pdf),
+        ]:
+            b = QPushButton(text)
+            b.clicked.connect(handler)
+            export_row.addWidget(b)
+
+        export_layout.addLayout(export_row)
+        layout.addWidget(export_frame)
+
+        # ================= TABLE =================
+        self.table = QTableWidget(0, len(FIELDS))
+        self.table.setHorizontalHeaderLabels([f.upper() for f in FIELDS])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.itemSelectionChanged.connect(self.select_row)
+        layout.addWidget(self.table)
+
+        self.load_students()
+
+    # ---------- CRUD ----------
+    def save(self):
+        try:
+            add_student(
+                self.entries["Admission No"].text(),
+                self.entries["Name"].text(),
+                self.entries["Gender"].currentText(),
+                int(self.entries["Year"].currentText()),
+                self.entries["Section"].text(),
+                self.entries["Phone"].text(),
+                self.entries["Email"].text(),
+                self.entries["Address"].text()
+            )
+            self.load_students()
+            self.clear()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
+    def update(self):
+        try:
+            update_student(
+                self.entries["Admission No"].text(),
+                self.entries["Name"].text(),
+                self.entries["Gender"].currentText(),
+                int(self.entries["Year"].currentText()),
+                self.entries["Section"].text(),
+                self.entries["Phone"].text(),
+                self.entries["Email"].text(),
+                self.entries["Address"].text()
+            )
+            self.load_students()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
+    def delete(self):
+        reply = QMessageBox.question(
+            self, "Confirm", "Delete student?",
+            QMessageBox.Yes | QMessageBox.No
         )
-        load_students()
-        clear()
+        if reply == QMessageBox.Yes:
+            delete_student(self.entries["Admission No"].text())
+            self.load_students()
+            self.clear()
 
-    def update():
-        update_student(
-            entries["Admission No"].get(),
-            entries["Name"].get(),
-            entries["Gender"].get(),
-            int(entries["Year"].get()),
-            entries["Section"].get(),
-            entries["Phone"].get(),
-            entries["Email"].get(),
-            entries["Address"].get()
-        )
-        load_students()
+    # ---------- EXPORT HANDLERS ----------
+    def _selected_year(self):
+        year = self.year_cb.currentText()
+        if not year:
+            QMessageBox.critical(self, "Error", "Select year")
+            return None
+        return year
 
-    def delete():
-        if messagebox.askyesno("Confirm", "Delete student?"):
-            delete_student(entries["Admission No"].get())
-            load_students()
-            clear()
-
-    Button(btns, text="Add", bg="#16a34a", fg="white", width=14, command=save).grid(row=0, column=0, padx=8)
-    Button(btns, text="Update", bg="#2563eb", fg="white", width=14, command=update).grid(row=0, column=1, padx=8)
-    Button(btns, text="Delete", bg="#dc2626", fg="white", width=14, command=delete).grid(row=0, column=2, padx=8)
-
-    # ================= EXPORT =================
-    export_bar = Frame(page.content, bg="white", padx=20, pady=20, relief=RIDGE, bd=1)
-    export_bar.pack(fill=X, padx=60, pady=20)
-
-    Label(export_bar, text="Export (Year-wise)", font=("Segoe UI", 14, "bold"), bg="white").grid(row=0, columnspan=4, sticky="w")
-
-    year_cb = ttk.Combobox(export_bar, values=[1, 2, 3, 4], state="readonly")
-    year_cb.grid(row=1, column=0, padx=10)
-
-
-    def export_students_excel():
-        if not year_cb.get():
-            messagebox.showerror("Error", "Select year")
+    def export_students_excel(self):
+        year = self._selected_year()
+        if not year:
             return
-        df = get_students_year(year_cb.get())
-        export_excel(df, f"students_year_{year_cb.get()}")
+        df = get_students_year(year)
+        export_excel(df, f"students_year_{year}", self)
 
-    def export_students_pdf():
-        if not year_cb.get():
-            messagebox.showerror("Error", "Select year")
+    def export_students_pdf(self):
+        year = self._selected_year()
+        if not year:
             return
-        df = get_students_year(year_cb.get())
-        export_pdf(df, f"students_year_{year_cb.get()}", "Student List")
+        df = get_students_year(year)
+        export_pdf(df, f"students_year_{year}", "Student List", self)
 
-    def export_marks_excel():
-        if not year_cb.get():
-            messagebox.showerror("Error", "Select year")
+    def export_marks_excel(self):
+        year = self._selected_year()
+        if not year:
             return
-        df = get_students_with_marks(year_cb.get())
-        export_excel(df, f"students_marks_year_{year_cb.get()}")
+        df = get_students_with_marks(year)
+        export_excel(df, f"students_marks_year_{year}", self)
 
-    def export_marks_pdf():
-        if not year_cb.get():
-            messagebox.showerror("Error", "Select year")
+    def export_marks_pdf(self):
+        year = self._selected_year()
+        if not year:
             return
-        df = get_students_with_marks(year_cb.get())
-        export_pdf(df, f"students_marks_year_{year_cb.get()}", "Student Marks")
-        if not year_cb.get():
-            messagebox.showerror("Error", "Select year")
-            return
-        df = get_students_year(year_cb.get())
-        export_excel(df, f"students_year_{year_cb.get()}")
+        df = get_students_with_marks(year)
+        export_pdf(df, f"students_marks_year_{year}", "Student Marks", self)
 
-    def export_students_pdf():
-        if not year_cb.get():
-            messagebox.showerror("Error", "Select year")
-            return
-        df = get_students_year(year_cb.get())
-        export_pdf(df, f"students_year_{year_cb.get()}", "Student List")
-
-    def export_marks_excel():
-        if not year_cb.get():
-            messagebox.showerror("Error", "Select year")
-            return
-        df = get_students_with_marks(year_cb.get())
-        export_excel(df, f"students_marks_year_{year_cb.get()}")
-
-    def export_marks_pdf():
-        if not year_cb.get():
-            messagebox.showerror("Error", "Select year")
-            return
-        df = get_students_with_marks(year_cb.get())
-        export_pdf(df, f"students_marks_year_{year_cb.get()}", "Student Marks")
-    Button(export_bar, text="Students → Excel", command=export_students_excel).grid(row=1, column=1, padx=10)
-    Button(export_bar, text="Students → PDF", command=export_students_pdf).grid(row=1, column=2, padx=10)
-    Button(export_bar, text="Marks → Excel", command=export_marks_excel).grid(row=2, column=1, padx=10, pady=5)
-    Button(export_bar, text="Marks → PDF", command=export_marks_pdf).grid(row=2, column=2, padx=10, pady=5)
-
-    # ================= TABLE =================
-    table = ttk.Treeview(
-        page.content,
-        columns=fields,
-        show="headings",
-        height=12
-    )
-    for f in fields:
-        table.heading(f, text=f.upper())
-        table.column(f, width=140, anchor="center")
-
-    table.pack(fill=BOTH, expand=True, padx=60, pady=20)
-
-    def load_students():
-        table.delete(*table.get_children())
+    # ---------- TABLE HELPERS ----------
+    def load_students(self):
+        self.table.setRowCount(0)
         for row in get_all_students():
-            table.insert("", END, values=row)
+            r = self.table.rowCount()
+            self.table.insertRow(r)
+            for c, val in enumerate(row):
+                self.table.setItem(r, c, QTableWidgetItem(str(val)))
 
-    def clear():
-        for e in entries.values():
-            e.delete(0, END)
+    def clear(self):
+        for f, w in self.entries.items():
+            if isinstance(w, QComboBox):
+                w.setCurrentIndex(0)
+            else:
+                w.clear()
 
-    def select_row(event):
-        sel = table.focus()
-        if not sel:
+    def select_row(self):
+        row = self.table.currentRow()
+        if row < 0:
             return
-        vals = table.item(sel)["values"]
-        for i, k in enumerate(entries):
-            entries[k].delete(0, END)
-            entries[k].insert(0, vals[i])
-
-    table.bind("<<TreeviewSelect>>", select_row)
-
-    load_students()
+        for i, f in enumerate(FIELDS):
+            val = self.table.item(row, i).text()
+            w = self.entries[f]
+            if isinstance(w, QComboBox):
+                idx = w.findText(val)
+                if idx >= 0:
+                    w.setCurrentIndex(idx)
+            else:
+                w.setText(val)

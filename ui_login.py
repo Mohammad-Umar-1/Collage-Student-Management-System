@@ -1,73 +1,91 @@
-from tkinter import *
-from tkinter import messagebox
+from PyQt5.QtWidgets import (
+    QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout,
+    QFrame, QMessageBox
+)
+from PyQt5.QtCore import Qt
 from auth import login
 
 
-def start_login(root):
-    from ui_dashboard import open_dashboard  # ✅ moved here
+class LoginWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.dashboard = None  # keep ref so it isn't garbage collected
 
-    root.title("College Student Management System")
-    root.state("zoomed")
-    root.configure(bg="#f4f6f8")
+        self.setWindowTitle("College Student Management System")
+        self.showMaximized()
+        self.setStyleSheet("background-color: #f4f6f8;")
 
-    card = Frame(root, bg="white", padx=45, pady=45, relief=RIDGE, bd=1)
-    card.place(relx=0.5, rely=0.5, anchor=CENTER)
+        outer = QVBoxLayout(self)
+        outer.setAlignment(Qt.AlignCenter)
 
-    Label(card, text="COLLEGE CMS",
-          font=("Segoe UI", 24, "bold"),
-          fg="#111827", bg="white").pack(pady=(0, 5))
+        card = QFrame()
+        card.setStyleSheet("background-color: white; border: 1px solid #d1d5db;")
+        card.setFixedWidth(380)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(45, 45, 45, 45)
 
-    Label(card, text="Login to your account",
-          font=("Segoe UI", 11),
-          fg="#6b7280", bg="white").pack(pady=(0, 25))
+        title = QLabel("COLLEGE CMS")
+        title.setStyleSheet("font-size: 24pt; font-weight: bold; color: #111827;")
+        title.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(title)
 
-    Label(card, text="Username",
-          font=("Segoe UI", 11, "bold"),
-          bg="white").pack(anchor="w")
+        subtitle = QLabel("Login to your account")
+        subtitle.setStyleSheet("color: #6b7280;")
+        subtitle.setAlignment(Qt.AlignCenter)
+        card_layout.addSpacing(5)
+        card_layout.addWidget(subtitle)
+        card_layout.addSpacing(20)
 
-    username = Entry(card, font=("Segoe UI", 11), width=32)
-    username.pack(pady=(6, 15))
-    username.focus()
+        card_layout.addWidget(QLabel("Username"))
+        self.username = QLineEdit()
+        self.username.setFocus()
+        card_layout.addWidget(self.username)
 
-    Label(card, text="Password",
-          font=("Segoe UI", 11, "bold"),
-          bg="white").pack(anchor="w")
+        card_layout.addWidget(QLabel("Password"))
+        self.password = QLineEdit()
+        self.password.setEchoMode(QLineEdit.Password)
+        card_layout.addWidget(self.password)
+        card_layout.addSpacing(15)
 
-    password = Entry(card, show="*", font=("Segoe UI", 11), width=32)
-    password.pack(pady=(6, 20))
+        login_btn = QPushButton("Login")
+        login_btn.setStyleSheet(
+            "background-color: #2563eb; color: white; font-weight: bold; padding: 10px;"
+        )
+        login_btn.clicked.connect(self.handle_login)
+        card_layout.addWidget(login_btn)
 
-    def handle_login():
-        role = login(username.get(), password.get())
+        exit_btn = QPushButton("Exit")
+        exit_btn.setStyleSheet(
+            "background-color: #dc2626; color: white; font-weight: bold; padding: 10px;"
+        )
+        exit_btn.clicked.connect(self.exit_app)
+        card_layout.addWidget(exit_btn)
+
+        outer.addWidget(card, alignment=Qt.AlignCenter)
+
+        self.password.returnPressed.connect(self.handle_login)
+        self.username.returnPressed.connect(self.handle_login)
+
+    def handle_login(self):
+        from ui_dashboard import DashboardWindow  # avoid circular import
+
+        role = login(self.username.text(), self.password.text())
         if role:
-            root.withdraw()
-            open_dashboard(root, role)
+            self.hide()
+            self.dashboard = DashboardWindow(role, self)
+            self.dashboard.show()
         else:
-            messagebox.showerror("Login Failed", "Invalid credentials")
+            QMessageBox.critical(self, "Login Failed", "Invalid credentials")
 
-    Button(card, text="Login",
-           font=("Segoe UI", 12, "bold"),
-           bg="#2563eb", fg="white",
-           relief=FLAT, height=2,
-           command=handle_login).pack(fill=X)
+    def exit_app(self):
+        reply = QMessageBox.question(
+            self, "Exit", "Are you sure you want to exit the application?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.close()
 
-    root.bind("<Return>", lambda e: handle_login())
-    def exit_app():
-        if messagebox.askyesno("Exit", "Are you sure you want to exit the application?"):
-            root.destroy()
-    Button(
-        card,
-        text="Exit",
-        font=("Segoe UI", 11, "bold"),
-        bg="#dc2626",
-        fg="white",
-        relief=FLAT,
-        height=2,
-        command=exit_app
-    ).pack(fill=X, pady=(0, 10))
-
-
-def show_login_again(root):
-    root.deiconify()
-    root.state("zoomed")
-    root.lift()            # bring to front
-    root.focus_force()
+    def show_login_again(self):
+        self.showMaximized()
+        self.raise_()
+        self.activateWindow()
